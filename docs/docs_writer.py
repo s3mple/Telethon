@@ -4,7 +4,7 @@ import re
 
 class DocsWriter:
     """Utility class used to write the HTML files used on the documentation"""
-    def __init__(self, filename, type_to_path):
+    def __init__(self, filename, type_to_path_function):
         """Initializes the writer to the specified output file,
            creating the parent directories when used if required.
 
@@ -19,7 +19,7 @@ class DocsWriter:
         self.menu_separator_tag = None
 
         # Utility functions TODO There must be a better way
-        self.type_to_path = lambda t: type_to_path(
+        self.type_to_path = lambda t: type_to_path_function(
             t, relative_to=self.filename
         )
 
@@ -31,32 +31,29 @@ class DocsWriter:
         self._script = ''
 
     # High level writing
-    def write_head(self, title, relative_css_path, default_css):
+    def write_head(self, title, relative_css_path):
         """Writes the head part for the generated document,
            with the given title and CSS
         """
-        self.write(
-            '''<!DOCTYPE html>
+        self.write('''<!DOCTYPE html>
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    <title>{title}</title>
+    <title>''')
+
+        self.write(title)
+
+        self.write('''</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link id="style" href="{rel_css}/docs.{def_css}.css" rel="stylesheet">
-    <script>
-    document.getElementById("style").href = "{rel_css}/docs."
-        + (document.cookie.split(";")[0].split("=")[1] || "{def_css}")
-        + ".css";
-    </script>
-    <link href="https://fonts.googleapis.com/css?family=Nunito|Source+Code+Pro"
-          rel="stylesheet">
+    <link href="''')
+
+        self.write(relative_css_path)
+
+        self.write('''" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Nunito|Source+Code+Pro" rel="stylesheet">
 </head>
 <body>
-<div id="main_div">''',
-            title=title,
-            rel_css=relative_css_path.rstrip('/'),
-            def_css=default_css
-        )
+<div id="main_div">''')
 
     def set_menu_separator(self, relative_image_path):
         """Sets the menu separator.
@@ -80,7 +77,9 @@ class DocsWriter:
 
         self.write('<li>')
         if link:
-            self.write('<a href="{}">', link)
+            self.write('<a href="')
+            self.write(link)
+            self.write('">')
 
         # Write the real menu entry text
         self.write(name)
@@ -99,21 +98,26 @@ class DocsWriter:
         """Writes a title header in the document body,
            with an optional depth level
         """
-        self.write('<h{level}>{title}</h{level}>', title=title, level=level)
+        self.write('<h%d>' % level)
+        self.write(title)
+        self.write('</h%d>' % level)
 
     def write_code(self, tlobject):
         """Writes the code for the given 'tlobject' properly
            formatted with hyperlinks
         """
-        self.write('<pre>---{}---\n',
-                   'functions' if tlobject.is_function else 'types')
+        self.write('<pre>---')
+        self.write('functions' if tlobject.is_function else 'types')
+        self.write('---\n')
 
         # Write the function or type and its ID
         if tlobject.namespace:
             self.write(tlobject.namespace)
             self.write('.')
 
-        self.write('{}#{:08x}', tlobject.name, tlobject.id)
+        self.write(tlobject.name)
+        self.write('#')
+        self.write(hex(tlobject.id)[2:].rjust(8, '0'))
 
         # Write all the arguments (or do nothing if there's none)
         for arg in tlobject.args:
@@ -130,19 +134,20 @@ class DocsWriter:
 
             # "Opening" modifiers
             if arg.is_flag:
-                self.write('flags.{}?', arg.flag_index)
+                self.write('flags.%d?' % arg.flag_index)
 
             if arg.is_generic:
                 self.write('!')
 
             if arg.is_vector:
-                self.write('<a href="{}">Vector</a>&lt;',
-                           self.type_to_path('vector'))
+                self.write(
+                    '<a href="%s">Vector</a>&lt;' % self.type_to_path('vector')
+                )
 
             # Argument type
             if arg.type:
                 if add_link:
-                    self.write('<a href="{}">', self.type_to_path(arg.type))
+                    self.write('<a href="%s">' % self.type_to_path(arg.type))
                 self.write(arg.type)
                 if add_link:
                     self.write('</a>')
@@ -171,14 +176,19 @@ class DocsWriter:
                 # use a lower type name for it (see #81)
                 vector, inner = tlobject.result.split('<')
                 inner = inner.strip('>')
-                self.write('<a href="{}">{}</a>&lt;',
-                           self.type_to_path(vector), vector)
+                self.write('<a href="')
+                self.write(self.type_to_path(vector))
+                self.write('">%s</a>&lt;' % vector)
 
-                self.write('<a href="{}">{}</a>&gt;',
-                           self.type_to_path(inner), inner)
+                self.write('<a href="')
+                self.write(self.type_to_path(inner))
+                self.write('">%s</a>' % inner)
+
+                self.write('&gt;')
             else:
-                self.write('<a href="{}">{}</a>',
-                           self.type_to_path(tlobject.result), tlobject.result)
+                self.write('<a href="')
+                self.write(self.type_to_path(tlobject.result))
+                self.write('">%s</a>' % tlobject.result)
 
         self.write('</pre>')
 
@@ -199,13 +209,17 @@ class DocsWriter:
 
         self.write('<td')
         if align:
-            self.write(' style="text-align:{}"', align)
+            self.write(' style="text-align:')
+            self.write(align)
+            self.write('"')
         self.write('>')
 
         if bold:
             self.write('<b>')
         if link:
-            self.write('<a href="{}">', link)
+            self.write('<a href="')
+            self.write(link)
+            self.write('">')
 
         # Finally write the real table data, the given text
         self.write(text)
@@ -230,7 +244,9 @@ class DocsWriter:
 
     def write_text(self, text):
         """Writes a paragraph of text"""
-        self.write('<p>{}</p>', text)
+        self.write('<p>')
+        self.write(text)
+        self.write('</p>')
 
     def write_copy_button(self, text, text_to_copy):
         """Writes a button with 'text' which can be used
@@ -257,18 +273,16 @@ class DocsWriter:
                 'c.select();'
                 'try{document.execCommand("copy")}'
                 'catch(e){}}'
-                '</script>'
-            )
+                '</script>')
 
-        self.write('</div>{}</body></html>', self._script)
+        self.write('</div>')
+        self.write(self._script)
+        self.write('</body></html>')
 
     # "Low" level writing
-    def write(self, s, *args, **kwargs):
+    def write(self, s):
         """Wrapper around handle.write"""
-        if args or kwargs:
-            self.handle.write(s.format(*args, **kwargs))
-        else:
-            self.handle.write(s)
+        self.handle.write(s)
 
     # With block
     def __enter__(self):

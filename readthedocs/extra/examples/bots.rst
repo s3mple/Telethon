@@ -13,7 +13,7 @@ Talking to Inline Bots
 
 You can query an inline bot, such as `@VoteBot`__ (note, *query*,
 not *interact* with a voting message), by making use of the
-:tl:`GetInlineBotResultsRequest` request:
+`GetInlineBotResultsRequest`__ request:
 
     .. code-block:: python
 
@@ -24,7 +24,7 @@ not *interact* with a voting message), by making use of the
         ))
 
 And you can select any of their results by using
-:tl:`SendInlineBotResultRequest`:
+`SendInlineBotResultRequest`__:
 
     .. code-block:: python
 
@@ -41,7 +41,7 @@ Talking to Bots with special reply markup
 *****************************************
 
 To interact with a message that has a special reply markup, such as
-`@VoteBot`__ polls, you would use :tl:`GetBotCallbackAnswerRequest`:
+`@VoteBot`__ polls, you would use `GetBotCallbackAnswerRequest`__:
 
     .. code-block:: python
 
@@ -58,4 +58,7 @@ show it visually (button rows, and buttons within each row, each with
 its own data).
 
 __ https://t.me/vote
+__ https://lonamiwebs.github.io/Telethon/methods/messages/get_inline_bot_results.html
+__ https://lonamiwebs.github.io/Telethon/methods/messages/send_inline_bot_result.html
+__ https://lonamiwebs.github.io/Telethon/methods/messages/get_bot_callback_answer.html
 __ https://t.me/vote

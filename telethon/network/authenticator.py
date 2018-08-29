@@ -11,7 +11,8 @@ from ..tl.types import (
     ServerDHInnerData, ClientDHInnerData, DhGenOk, DhGenRetry, DhGenFail
 )
 from .. import helpers as utils
-from ..crypto import AES, AuthKey, Factorization, rsa
+from ..crypto import AES, AuthKey, Factorization
+from ..crypto import rsa
 from ..errors import SecurityError
 from ..extensions import BinaryReader
 from ..network import MtProtoPlainSender

@@ -121,9 +121,6 @@ def parse(html):
     :param message: the message with HTML to be parsed.
     :return: a tuple consisting of (clean message, [message entities]).
     """
-    if not html:
-        return html, []
-
     parser = HTMLToTelegramParser()
     parser.feed(_add_surrogate(html))
     return _del_surrogate(parser.text), parser.entities
@@ -138,7 +135,7 @@ def unparse(text, entities):
     :param entities: the MessageEntity's applied to the text.
     :return: a HTML representation of the combination of both inputs.
     """
-    if not text or not entities:
+    if not entities:
         return text
 
     text = _add_surrogate(text)

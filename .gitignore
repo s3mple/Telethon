@@ -1,6 +1,5 @@
 # Docs
 _build/
-docs/
 
 # Generated code
 telethon/tl/functions/

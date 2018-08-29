@@ -91,9 +91,7 @@ class TcpClient:
                     # to none to recreate it on the next iteration
                     self._socket = None
                     time.sleep(timeout)
-                    timeout *= 2
-                    if timeout > MAX_TIMEOUT:
-                        raise
+                    timeout = min(timeout * 2, MAX_TIMEOUT)
                 else:
                     raise
 

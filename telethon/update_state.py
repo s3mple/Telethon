@@ -110,10 +110,6 @@ class UpdateState:
                 # We don't want to crash a worker thread due to any reason
                 __log__.exception('Unhandled exception on worker %d', wid)
 
-    def get_update_state(self, entity_id):
-        """Gets the updates.State corresponding to the given entity or 0."""
-        return self._state
-
     def process(self, update):
         """Processes an update object. This method is normally called by
            the library itself.
@@ -133,9 +129,12 @@ class UpdateState:
             # After running the script for over an hour and receiving over
             # 1000 updates, the only duplicates received were users going
             # online or offline. We can trust the server until new reports.
+            #
+            # TODO Note somewhere that all updates are modified to include
+            # .entities, which is a dictionary you can access but may be empty.
             # This should only be used as read-only.
             if isinstance(update, tl.UpdateShort):
-                update.update._entities = {}
+                update.update.entities = {}
                 self._updates.put(update.update)
             # Expand "Updates" into "Update", and pass these to callbacks.
             # Since .users and .chats have already been processed, we
@@ -144,9 +143,9 @@ class UpdateState:
                 entities = {utils.get_peer_id(x): x for x in
                             itertools.chain(update.users, update.chats)}
                 for u in update.updates:
-                    u._entities = entities
+                    u.entities = entities
                     self._updates.put(u)
             # TODO Handle "tl.UpdatesTooLong"
             else:
-                update._entities = {}
+                update.entities = {}
                 self._updates.put(update)

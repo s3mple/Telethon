@@ -14,15 +14,9 @@ from io import BytesIO
 from mimetypes import guess_type
 
 from .crypto import CdnDecrypter
-from .tl import TLObject
 from .tl.custom import InputSizedFile
-from .tl.functions.help import AcceptTermsOfServiceRequest
-from .tl.functions.updates import GetDifferenceRequest
 from .tl.functions.upload import (
     SaveBigFilePartRequest, SaveFilePartRequest, GetFileRequest
-)
-from .tl.types.updates import (
-    DifferenceSlice, DifferenceEmpty, Difference, DifferenceTooLong
 )
 from .tl.types.upload import FileCdnRedirect
 
@@ -44,12 +38,12 @@ from .errors import (
     RPCError, UnauthorizedError, PhoneCodeEmptyError, PhoneCodeExpiredError,
     PhoneCodeHashEmptyError, PhoneCodeInvalidError, LocationInvalidError,
     SessionPasswordNeededError, FileMigrateError, PhoneNumberUnoccupiedError,
-    PhoneNumberOccupiedError, UsernameNotOccupiedError
+    PhoneNumberOccupiedError
 )
-from .network import ConnectionTcpFull
+from .network import ConnectionMode
 from .tl.custom import Draft, Dialog
 from .tl.functions.account import (
-    GetPasswordRequest, UpdatePasswordSettingsRequest
+    GetPasswordRequest
 )
 from .tl.functions.auth import (
     CheckPasswordRequest, LogOutRequest, SendCodeRequest, SignInRequest,
@@ -63,7 +57,7 @@ from .tl.functions.messages import (
     SendMessageRequest, GetChatsRequest, GetAllDraftsRequest,
     CheckChatInviteRequest, ReadMentionsRequest, SendMultiMediaRequest,
     UploadMediaRequest, EditMessageRequest, GetFullChatRequest,
-    ForwardMessagesRequest, SearchRequest
+    ForwardMessagesRequest
 )
 
 from .tl.functions import channels
@@ -77,25 +71,21 @@ from .tl.functions.channels import (
 )
 from .tl.types import (
     DocumentAttributeAudio, DocumentAttributeFilename,
+    InputDocumentFileLocation, InputFileLocation,
     InputMediaUploadedDocument, InputMediaUploadedPhoto, InputPeerEmpty,
     Message, MessageMediaContact, MessageMediaDocument, MessageMediaPhoto,
     InputUserSelf, UserProfilePhoto, ChatPhoto, UpdateMessageID,
     UpdateNewChannelMessage, UpdateNewMessage, UpdateShortSentMessage,
     PeerUser, InputPeerUser, InputPeerChat, InputPeerChannel, MessageEmpty,
-    ChatInvite, ChatInviteAlready, Photo, InputPeerSelf,
+    ChatInvite, ChatInviteAlready, PeerChannel, Photo, InputPeerSelf,
     InputSingleMedia, InputMediaPhoto, InputPhoto, InputFile, InputFileBig,
     InputDocument, InputMediaDocument, Document, MessageEntityTextUrl,
     InputMessageEntityMentionName, DocumentAttributeVideo,
     UpdateEditMessage, UpdateEditChannelMessage, UpdateShort, Updates,
     MessageMediaWebPage, ChannelParticipantsSearch, PhotoSize, PhotoCachedSize,
-    PhotoSizeEmpty, MessageService, ChatParticipants, User, WebPage,
-    ChannelParticipantsBanned, ChannelParticipantsKicked,
-    InputMessagesFilterEmpty, UpdatesCombined
+    PhotoSizeEmpty, MessageService
 )
-from .tl.types.messages import DialogsSlice, MessagesNotModified
-from .tl.types.account import PasswordInputSettings, NoPassword
-from .tl import custom
-from .utils import Default
+from .tl.types.messages import DialogsSlice
 from .extensions import markdown, html
 
 __log__ = logging.getLogger(__name__)
@@ -106,59 +96,52 @@ class TelegramClient(TelegramBareClient):
     Initializes the Telegram client with the specified API ID and Hash.
 
     Args:
-        session (`str` | `telethon.sessions.abstract.Session`, `None`):
+        session (:obj:`str` | :obj:`telethon.sessions.abstract.Session`, \
+                 :obj:`None`):
             The file name of the session file to be used if a string is
             given (it may be a full path), or the Session instance to be
             used otherwise. If it's ``None``, the session will not be saved,
             and you should call :meth:`.log_out()` when you're done.
 
-            Note that if you pass a string it will be a file in the current
-            working directory, although you can also pass absolute paths.
-
-            The session file contains enough information for you to login
-            without re-sending the code, so if you have to enter the code
-            more than once, maybe you're changing the working directory,
-            renaming or removing the file, or using random names.
-
-        api_id (`int` | `str`):
+        api_id (:obj:`int` | :obj:`str`):
             The API ID you obtained from https://my.telegram.org.
 
-        api_hash (`str`):
+        api_hash (:obj:`str`):
             The API ID you obtained from https://my.telegram.org.
 
-        connection (`telethon.network.connection.common.Connection`, optional):
-            The connection instance to be used when creating a new connection
-            to the servers. If it's a type, the `proxy` argument will be used.
+        connection_mode (:obj:`ConnectionMode`, optional):
+            The connection mode to be used when creating a new connection
+            to the servers. Defaults to the ``TCP_FULL`` mode.
+            This will only affect how messages are sent over the network
+            and how much processing is required before sending them.
 
-            Defaults to `telethon.network.connection.tcpfull.ConnectionTcpFull`.
-
-        use_ipv6 (`bool`, optional):
+        use_ipv6 (:obj:`bool`, optional):
             Whether to connect to the servers through IPv6 or not.
             By default this is ``False`` as IPv6 support is not
             too widespread yet.
 
-        proxy (`tuple` | `dict`, optional):
+        proxy (:obj:`tuple` | :obj:`dict`, optional):
             A tuple consisting of ``(socks.SOCKS5, 'host', port)``.
             See https://github.com/Anorov/PySocks#usage-1 for more.
 
-        update_workers (`int`, optional):
+        update_workers (:obj:`int`, optional):
             If specified, represents how many extra threads should
             be spawned to handle incoming updates, and updates will
             be kept in memory until they are processed. Note that
             you must set this to at least ``0`` if you want to be
             able to process updates through :meth:`updates.poll()`.
 
-        timeout (`int` | `float` | `timedelta`, optional):
+        timeout (:obj:`int` | :obj:`float` | :obj:`timedelta`, optional):
             The timeout to be used when receiving responses from
             the network. Defaults to 5 seconds.
 
-        spawn_read_thread (`bool`, optional):
+        spawn_read_thread (:obj:`bool`, optional):
             Whether to use an extra background thread or not. Defaults
             to ``True`` so receiving items from the network happens
             instantly, as soon as they arrive. Can still be disabled
             if you want to run the library without any additional thread.
 
-        report_errors (`bool`, optional):
+        report_errors (:obj:`bool`, optional):
             Whether to report RPC errors or not. Defaults to ``True``,
             see :ref:`api-status` for more information.
 
@@ -178,8 +161,7 @@ class TelegramClient(TelegramBareClient):
     # region Initialization
 
     def __init__(self, session, api_id, api_hash,
-                 *,
-                 connection=ConnectionTcpFull,
+                 connection_mode=ConnectionMode.TCP_FULL,
                  use_ipv6=False,
                  proxy=None,
                  update_workers=None,
@@ -189,7 +171,7 @@ class TelegramClient(TelegramBareClient):
                  **kwargs):
         super().__init__(
             session, api_id, api_hash,
-            connection=connection,
+            connection_mode=connection_mode,
             use_ipv6=use_ipv6,
             proxy=proxy,
             update_workers=update_workers,
@@ -202,17 +184,16 @@ class TelegramClient(TelegramBareClient):
         self._event_builders = []
         self._events_pending_resolve = []
 
-        # Default parse mode
-        self._parse_mode = markdown
-
         # Some fields to easy signing in. Let {phone: hash} be
         # a dictionary because the user may change their mind.
         self._phone_code_hash = {}
         self._phone = None
-        self._tos = None
 
         # Sometimes we need to know who we are, cache the self peer
         self._self_input_peer = None
+
+        # Don't call .get_dialogs() every time a .get_entity() fails
+        self._called_get_dialogs = False
 
     # endregion
 
@@ -225,10 +206,10 @@ class TelegramClient(TelegramBareClient):
         Sends a code request to the specified phone number.
 
         Args:
-            phone (`str` | `int`):
+            phone (:obj:`str` | :obj:`int`):
                 The phone to which the code will be sent.
 
-            force_sms (`bool`, optional):
+            force_sms (:obj:`bool`, optional):
                 Whether to force sending as SMS.
 
         Returns:
@@ -239,7 +220,6 @@ class TelegramClient(TelegramBareClient):
 
         if not phone_hash:
             result = self(SendCodeRequest(phone, self.api_id, self.api_hash))
-            self._tos = result.terms_of_service
             self._phone_code_hash[phone] = phone_hash = result.phone_code_hash
         else:
             force_sms = True
@@ -261,12 +241,6 @@ class TelegramClient(TelegramBareClient):
         Convenience method to interactively connect and sign in if required,
         also taking into consideration that 2FA may be enabled in the account.
 
-        If the phone doesn't belong to an existing account (and will hence
-        `sign_up` for a new one),  **you are agreeing to Telegram's
-        Terms of Service. This is required and your account
-        will be banned otherwise.** See https://telegram.org/tos
-        and https://core.telegram.org/api/terms.
-
         Example usage:
             >>> client = TelegramClient(session, api_id, api_hash).start(phone)
             Please enter the code you received: 12345
@@ -274,36 +248,36 @@ class TelegramClient(TelegramBareClient):
             (You are now logged in)
 
         Args:
-            phone (`str` | `int` | `callable`):
+            phone (:obj:`str` | :obj:`int` | :obj:`callable`):
                 The phone (or callable without arguments to get it)
                 to which the code will be sent.
 
-            password (`callable`, optional):
+            password (:obj:`callable`, optional):
                 The password for 2 Factor Authentication (2FA).
                 This is only required if it is enabled in your account.
 
-            bot_token (`str`):
+            bot_token (:obj:`str`):
                 Bot Token obtained by `@BotFather <https://t.me/BotFather>`_
                 to log in as a bot. Cannot be specified with ``phone`` (only
                 one of either allowed).
 
-            force_sms (`bool`, optional):
+            force_sms (:obj:`bool`, optional):
                 Whether to force sending the code request as SMS.
                 This only makes sense when signing in with a `phone`.
 
-            code_callback (`callable`, optional):
+            code_callback (:obj:`callable`, optional):
                 A callable that will be used to retrieve the Telegram
                 login code. Defaults to `input()`.
 
-            first_name (`str`, optional):
+            first_name (:obj:`str`, optional):
                 The first name to be used if signing up. This has no
                 effect if the account already exists and you sign in.
 
-            last_name (`str`, optional):
+            last_name (:obj:`str`, optional):
                 Similar to the first name, but for the last. Optional.
 
         Returns:
-            This `TelegramClient`, so initialization
+            This :obj:`TelegramClient`, so initialization
             can be chained with ``.start()``.
         """
 
@@ -383,14 +357,7 @@ class TelegramClient(TelegramBareClient):
             me = self.sign_in(phone=phone, password=password)
 
         # We won't reach here if any step failed (exit by exception)
-        signed, name = 'Signed in successfully as', utils.get_display_name(me)
-        try:
-            print(signed, name)
-        except UnicodeEncodeError:
-            # Some terminals don't support certain characters
-            print(signed, name.encode('utf-8', errors='ignore')
-                              .decode('ascii', errors='ignore'))
-
+        print('Signed in successfully as', utils.get_display_name(me))
         self._check_events_pending_resolve()
         return self
 
@@ -401,26 +368,26 @@ class TelegramClient(TelegramBareClient):
         or code that Telegram sent.
 
         Args:
-            phone (`str` | `int`):
+            phone (:obj:`str` | :obj:`int`):
                 The phone to send the code to if no code was provided,
                 or to override the phone that was previously used with
                 these requests.
 
-            code (`str` | `int`):
+            code (:obj:`str` | :obj:`int`):
                 The code that Telegram sent. Note that if you have sent this
                 code through the application itself it will immediately
                 expire. If you want to send the code, obfuscate it somehow.
                 If you're not doing any of this you can ignore this note.
 
-            password (`str`):
+            password (:obj:`str`):
                 2FA password, should be used if a previous call raised
                 SessionPasswordNeededError.
 
-            bot_token (`str`):
+            bot_token (:obj:`str`):
                 Used to sign in as a bot. Not all requests will be available.
                 This should be the hash the @BotFather gave you.
 
-            phone_code_hash (`str`):
+            phone_code_hash (:obj:`str`):
                 The hash returned by .send_code_request. This can be set to None
                 to use the last hash known.
 
@@ -476,19 +443,14 @@ class TelegramClient(TelegramBareClient):
         Signs up to Telegram if you don't have an account yet.
         You must call .send_code_request(phone) first.
 
-        **By using this method you're agreeing to Telegram's
-        Terms of Service. This is required and your account
-        will be banned otherwise.** See https://telegram.org/tos
-        and https://core.telegram.org/api/terms.
-
         Args:
-            code (`str` | `int`):
+            code (:obj:`str` | :obj:`int`):
                 The code sent by Telegram
 
-            first_name (`str`):
+            first_name (:obj:`str`):
                 The first name to be used by the new account.
 
-            last_name (`str`, optional)
+            last_name (:obj:`str`, optional)
                 Optional last name.
 
         Returns:
@@ -498,14 +460,6 @@ class TelegramClient(TelegramBareClient):
             self._check_events_pending_resolve()
             return self.get_me()
 
-        if self._tos and self._tos.text:
-            if self.parse_mode:
-                t = self.parse_mode.unparse(self._tos.text, self._tos.entities)
-            else:
-                t = self._tos.text
-            sys.stderr.write("{}\n".format(t))
-            sys.stderr.flush()
-
         result = self(SignUpRequest(
             phone_number=self._phone,
             phone_code_hash=self._phone_code_hash.get(self._phone, ''),
@@ -513,9 +467,6 @@ class TelegramClient(TelegramBareClient):
             first_name=first_name,
             last_name=last_name
         ))
-
-        if self._tos:
-            self(AcceptTermsOfServiceRequest(self._tos.id))
 
         self._self_input_peer = utils.get_input_peer(
             result.user, allow_self=False
@@ -537,7 +488,6 @@ class TelegramClient(TelegramBareClient):
 
         self.disconnect()
         self.session.delete()
-        self._authorized = False
         return True
 
     def get_me(self, input_peer=False):
@@ -546,7 +496,7 @@ class TelegramClient(TelegramBareClient):
         or None if the request fails (hence, not authenticated).
 
         Args:
-            input_peer (`bool`, optional):
+            input_peer (:obj:`bool`, optional):
                 Whether to return the :tl:`InputPeerUser` version or the normal
                 :tl:`User`. This can be useful if you just need to know the ID
                 of yourself.
@@ -576,31 +526,30 @@ class TelegramClient(TelegramBareClient):
                      offset_peer=InputPeerEmpty(), _total=None):
         """
         Returns an iterator over the dialogs, yielding 'limit' at most.
-        Dialogs are the open "chats" or conversations with other people,
-        groups you have joined, or channels you are subscribed to.
+        Dialogs are the open "chats" or conversations with other people.
 
         Args:
-            limit (`int` | `None`):
+            limit (:obj:`int` | :obj:`None`):
                 How many dialogs to be retrieved as maximum. Can be set to
                 ``None`` to retrieve all dialogs. Note that this may take
                 whole minutes if you have hundreds of dialogs, as Telegram
                 will tell the library to slow down through a
                 ``FloodWaitError``.
 
-            offset_date (`datetime`, optional):
+            offset_date (:obj:`datetime`, optional):
                 The offset date to be used.
 
-            offset_id (`int`, optional):
+            offset_id (:obj:`int`, optional):
                 The message ID to be used as an offset.
 
             offset_peer (:tl:`InputPeer`, optional):
                 The peer to be used as an offset.
 
-            _total (`list`, optional):
+            _total (:obj:`list`, optional):
                 A single-item list to pass the total parameter by reference.
 
         Yields:
-            Instances of `telethon.tl.custom.dialog.Dialog`.
+            Instances of :obj:`telethon.tl.custom.dialog.Dialog`.
         """
         limit = float('inf') if limit is None else int(limit)
         if limit == 0:
@@ -629,10 +578,9 @@ class TelegramClient(TelegramBareClient):
 
             if _total:
                 _total[0] = getattr(r, 'count', len(r.dialogs))
+            messages = {m.id: m for m in r.messages}
             entities = {utils.get_peer_id(x): x
                         for x in itertools.chain(r.users, r.chats)}
-            messages = {m.id: custom.Message(self, m, entities, None)
-                        for m in r.messages}
 
             # Happens when there are pinned dialogs
             if len(r.dialogs) > limit:
@@ -669,9 +617,9 @@ class TelegramClient(TelegramBareClient):
         """
         Iterator over all open draft messages.
 
-        Instances of `telethon.tl.custom.draft.Draft` are yielded.
-        You can call `telethon.tl.custom.draft.Draft.set_message`
-        to change the message or `telethon.tl.custom.draft.Draft.delete`
+        Instances of :obj:`telethon.tl.custom.draft.Draft` are yielded.
+        You can call :obj:`telethon.tl.custom.draft.Draft.set_message`
+        to change the message or :obj:`telethon.tl.custom.draft.Draft.delete`
         among other things.
         """
         for update in self(GetAllDraftsRequest()).updates:
@@ -683,7 +631,8 @@ class TelegramClient(TelegramBareClient):
         """
         return list(self.iter_drafts())
 
-    def _get_response_message(self, request, result, input_chat):
+    @staticmethod
+    def _get_response_message(request, result):
         """
         Extracts the response message known a request and Update result.
         The request may also be the ID of the message to match.
@@ -702,109 +651,42 @@ class TelegramClient(TelegramBareClient):
 
         if isinstance(result, UpdateShort):
             updates = [result.update]
-            entities = {}
-        elif isinstance(result, (Updates, UpdatesCombined)):
+        elif isinstance(result, Updates):
             updates = result.updates
-            entities = {utils.get_peer_id(x): x
-                        for x in itertools.chain(result.users, result.chats)}
         else:
             return
 
-        found = None
         for update in updates:
             if isinstance(update, (UpdateNewChannelMessage, UpdateNewMessage)):
                 if update.message.id == msg_id:
-                    found = update.message
-                    break
+                    return update.message
 
             elif (isinstance(update, UpdateEditMessage) and
                     not isinstance(request.peer, InputPeerChannel)):
                 if request.id == update.message.id:
-                    found = update.message
-                    break
+                    return update.message
 
             elif (isinstance(update, UpdateEditChannelMessage) and
                     utils.get_peer_id(request.peer) ==
                         utils.get_peer_id(update.message.to_id)):
                 if request.id == update.message.id:
-                    found = update.message
-                    break
-
-        if found:
-            return custom.Message(self, found, entities, input_chat)
-
-    @property
-    def parse_mode(self):
-        """
-        This property is the default parse mode used when sending messages.
-        Defaults to `telethon.extensions.markdown`. It will always
-        be either ``None`` or an object with ``parse`` and ``unparse``
-        methods.
-
-        When setting a different value it should be one of:
-
-        * Object with ``parse`` and ``unparse`` methods.
-        * A ``callable`` to act as the parse method.
-        * A ``str`` indicating the ``parse_mode``. For Markdown ``'md'``
-          or ``'markdown'`` may be used. For HTML, ``'htm'`` or ``'html'``
-          may be used.
-
-        The ``parse`` method should be a function accepting a single
-        parameter, the text to parse, and returning a tuple consisting
-        of ``(parsed message str, [MessageEntity instances])``.
-
-        The ``unparse`` method should be the inverse of ``parse`` such
-        that ``assert text == unparse(*parse(text))``.
-
-        See :tl:`MessageEntity` for allowed message entities.
-        """
-        return self._parse_mode
-
-    @parse_mode.setter
-    def parse_mode(self, mode):
-        self._parse_mode = self._sanitize_parse_mode(mode)
-
-    @staticmethod
-    def _sanitize_parse_mode(mode):
-        if not mode:
-            return None
-
-        if callable(mode):
-            class CustomMode:
-                @staticmethod
-                def unparse(text, entities):
-                    raise NotImplementedError
-            CustomMode.parse = mode
-            return CustomMode
-        elif (all(hasattr(mode, x) for x in ('parse', 'unparse'))
-                and all(callable(x) for x in (mode.parse, mode.unparse))):
-            return mode
-        elif isinstance(mode, str):
-            try:
-                return {
-                    'md': markdown,
-                    'markdown': markdown,
-                    'htm': html,
-                    'html': html
-                }[mode.lower()]
-            except KeyError:
-                raise ValueError('Unknown parse mode {}'.format(mode))
-        else:
-            raise TypeError('Invalid parse mode type {}'.format(mode))
+                    return update.message
 
     def _parse_message_text(self, message, parse_mode):
         """
         Returns a (parsed message, entities) tuple depending on ``parse_mode``.
         """
-        if parse_mode == Default:
-            parse_mode = self._parse_mode
-        else:
-            parse_mode = self._sanitize_parse_mode(parse_mode)
-
         if not parse_mode:
             return message, []
 
-        message, msg_entities = parse_mode.parse(message)
+        parse_mode = parse_mode.lower()
+        if parse_mode in {'md', 'markdown'}:
+            message, msg_entities = markdown.parse(message)
+        elif parse_mode.startswith('htm'):
+            message, msg_entities = html.parse(message)
+        else:
+            raise ValueError('Unknown parsing mode: {}'.format(parse_mode))
+
         for i, e in enumerate(msg_entities):
             if isinstance(e, MessageEntityTextUrl):
                 m = re.match(r'^@|\+|tg://user\?id=(\d+)', e.url)
@@ -821,59 +703,45 @@ class TelegramClient(TelegramBareClient):
 
         return message, msg_entities
 
-    def send_message(self, entity, message='', reply_to=None,
-                     parse_mode=Default, link_preview=True, file=None,
-                     force_document=False, clear_draft=False):
+    def send_message(self, entity, message='', reply_to=None, parse_mode='md',
+                     link_preview=True, file=None, force_document=False,
+                     clear_draft=False):
         """
         Sends the given message to the specified entity (user/chat/channel).
 
-        The default parse mode is the same as the official applications
-        (a custom flavour of markdown). ``**bold**, `code` or __italic__``
-        are available. In addition you can send ``[links](https://example.com)``
-        and ``[mentions](@username)`` (or using IDs like in the Bot API:
-        ``[mention](tg://user?id=123456789)``) and ``pre`` blocks with three
-        backticks.
-
-        Sending a ``/start`` command with a parameter (like ``?start=data``)
-        is also done through this method. Simply send ``'/start data'`` to
-        the bot.
-
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 To who will it be sent.
 
-            message (`str` | :tl:`Message`):
+            message (:obj:`str` | :tl:`Message`):
                 The message to be sent, or another message object to resend.
 
-                The maximum length for a message is 35,000 bytes or 4,096
-                characters. Longer messages will not be sliced automatically,
-                and you should slice them manually if the text to send is
-                longer than said length.
-
-            reply_to (`int` | :tl:`Message`, optional):
+            reply_to (:obj:`int` | :tl:`Message`, optional):
                 Whether to reply to a message or not. If an integer is provided,
                 it should be the ID of the message that it should reply to.
 
-            parse_mode (`object`, optional):
-                See the `TelegramClient.parse_mode` property for allowed
-                values. Markdown parsing will be used by default.
+            parse_mode (:obj:`str`, optional):
+                Can be 'md' or 'markdown' for markdown-like parsing (default),
+                or 'htm' or 'html' for HTML-like parsing. If ``None`` or any
+                other false-y value is provided, the message will be sent with
+                no formatting.
 
-            link_preview (`bool`, optional):
+            link_preview (:obj:`bool`, optional):
                 Should the link preview be shown?
 
-            file (`file`, optional):
+            file (:obj:`file`, optional):
                 Sends a message with a file attached (e.g. a photo,
                 video, audio or document). The ``message`` may be empty.
 
-            force_document (`bool`, optional):
+            force_document (:obj:`bool`, optional):
                 Whether to send the given file as a document or not.
 
-            clear_draft (`bool`, optional):
+            clear_draft (:obj:`bool`, optional):
                 Whether the existing draft should be cleared or not.
                 Has no effect when sending a file.
 
         Returns:
-            The sent `telethon.tl.custom.message.Message`.
+            The sent :tl:`Message`.
         """
         if file is not None:
             return self.send_file(
@@ -889,13 +757,9 @@ class TelegramClient(TelegramBareClient):
         if isinstance(message, Message):
             if (message.media
                     and not isinstance(message.media, MessageMediaWebPage)):
-                return self.send_file(entity, message.media,
-                                      caption=message.message,
-                                      entities=message.entities)
+                return self.send_file(entity, message.media)
 
-            if reply_to is not None:
-                reply_id = self._get_message_id(reply_to)
-            elif utils.get_peer_id(entity) == utils.get_peer_id(message.to_id):
+            if utils.get_peer_id(entity) == utils.get_peer_id(message.to_id):
                 reply_id = message.reply_to_msg_id
             else:
                 reply_id = None
@@ -923,41 +787,38 @@ class TelegramClient(TelegramBareClient):
 
         result = self(request)
         if isinstance(result, UpdateShortSentMessage):
-            to_id, cls = utils.resolve_id(utils.get_peer_id(entity))
-            return custom.Message(self, Message(
+            return Message(
                 id=result.id,
-                to_id=cls(to_id),
+                to_id=entity,
                 message=message,
                 date=result.date,
                 out=result.out,
                 media=result.media,
                 entities=result.entities
-            ), {}, input_chat=entity)
+            )
 
-        return self._get_response_message(request, result, entity)
+        return self._get_response_message(request, result)
 
     def forward_messages(self, entity, messages, from_peer=None):
         """
         Forwards the given message(s) to the specified entity.
 
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 To which entity the message(s) will be forwarded.
 
-            messages (`list` | `int` | :tl:`Message`):
+            messages (:obj:`list` | :obj:`int` | :tl:`Message`):
                 The message(s) to forward, or their integer IDs.
 
-            from_peer (`entity`):
+            from_peer (:obj:`entity`):
                 If the given messages are integer IDs and not instances
                 of the ``Message`` class, this *must* be specified in
                 order for the forward to work.
 
         Returns:
-            The list of forwarded `telethon.tl.custom.message.Message`,
-            or a single one if a list wasn't provided as input.
+            The list of forwarded :tl:`Message`.
         """
-        single = not utils.is_list_like(messages)
-        if single:
+        if not utils.is_list_like(messages):
             messages = (messages,)
 
         if not from_peer:
@@ -980,215 +841,159 @@ class TelegramClient(TelegramBareClient):
             to_peer=entity
         )
         result = self(req)
-        if isinstance(result, (Updates, UpdatesCombined)):
-            entities = {utils.get_peer_id(x): x
-                        for x in itertools.chain(result.users, result.chats)}
-        else:
-            entities = {}
-
         random_to_id = {}
         id_to_message = {}
         for update in result.updates:
             if isinstance(update, UpdateMessageID):
                 random_to_id[update.random_id] = update.id
             elif isinstance(update, (UpdateNewMessage, UpdateNewChannelMessage)):
-                id_to_message[update.message.id] = custom.Message(
-                    self, update.message, entities, input_chat=entity)
+                id_to_message[update.message.id] = update.message
 
-        result = [id_to_message[random_to_id[rnd]] for rnd in req.random_id]
-        return result[0] if single else result
+        return [id_to_message[random_to_id[rnd]] for rnd in req.random_id]
 
-    def edit_message(self, entity, message=None, text=None,
-                     parse_mode=Default, link_preview=True,
-                     file=None):
+    def edit_message(self, entity, message_id, message=None, parse_mode='md',
+                     link_preview=True):
         """
         Edits the given message ID (to change its contents or disable preview).
 
         Args:
-            entity (`entity` | :tl:`Message`):
-                From which chat to edit the message. This can also be
-                the message to be edited, and the entity will be inferred
-                from it, so the next parameter will be assumed to be the
-                message text.
+            entity (:obj:`entity`):
+                From which chat to edit the message.
 
-            message (`int` | :tl:`Message` | `str`):
-                The ID of the message (or :tl:`Message` itself) to be edited.
-                If the `entity` was a :tl:`Message`, then this message will be
-                treated as the new text.
+            message_id (:obj:`str`):
+                The ID of the message (or ``Message`` itself) to be edited.
 
-            text (`str`, optional):
-                The new text of the message. Does nothing if the `entity`
-                was a :tl:`Message`.
+            message (:obj:`str`, optional):
+                The new text of the message.
 
-            parse_mode (`object`, optional):
-                See the `TelegramClient.parse_mode` property for allowed
-                values. Markdown parsing will be used by default.
+            parse_mode (:obj:`str`, optional):
+                Can be 'md' or 'markdown' for markdown-like parsing (default),
+                or 'htm' or 'html' for HTML-like parsing. If ``None`` or any
+                other false-y value is provided, the message will be sent with
+                no formatting.
 
-            link_preview (`bool`, optional):
+            link_preview (:obj:`bool`, optional):
                 Should the link preview be shown?
-
-            file (`str` | `bytes` | `file` | `media`, optional):
-                The file object that should replace the existing media
-                in the message.
-
-        Examples:
-
-            >>> client = TelegramClient(...).start()
-            >>> message = client.send_message('username', 'hello')
-            >>>
-            >>> client.edit_message('username', message, 'hello!')
-            >>> # or
-            >>> client.edit_message('username', message.id, 'Hello')
-            >>> # or
-            >>> client.edit_message(message, 'Hello!')
 
         Raises:
             ``MessageAuthorRequiredError`` if you're not the author of the
-            message but tried editing it anyway.
+            message but try editing it anyway.
 
             ``MessageNotModifiedError`` if the contents of the message were
             not modified at all.
 
         Returns:
-            The edited `telethon.tl.custom.message.Message`.
+            The edited :tl:`Message`.
         """
-        if isinstance(entity, Message):
-            text = message  # Shift the parameters to the right
-            message = entity
-            entity = entity.to_id
-
-        entity = self.get_input_entity(entity)
-        text, msg_entities = self._parse_message_text(text, parse_mode)
-        file_handle, media = self._file_to_media(file)
+        message, msg_entities = self._parse_message_text(message, parse_mode)
         request = EditMessageRequest(
-            peer=entity,
-            id=self._get_message_id(message),
-            message=text,
+            peer=self.get_input_entity(entity),
+            id=self._get_message_id(message_id),
+            message=message,
             no_webpage=not link_preview,
-            entities=msg_entities,
-            media=media
+            entities=msg_entities
         )
-        msg = self._get_response_message(request, self(request), entity)
-        self._cache_media(msg, file, file_handle)
-        return msg
+        result = self(request)
+        return self._get_response_message(request, result)
 
     def delete_messages(self, entity, message_ids, revoke=True):
         """
         Deletes a message from a chat, optionally "for everyone".
 
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 From who the message will be deleted. This can actually
                 be ``None`` for normal chats, but **must** be present
                 for channels and megagroups.
 
-            message_ids (`list` | `int` | :tl:`Message`):
+            message_ids (:obj:`list` | :obj:`int` | :tl:`Message`):
                 The IDs (or ID) or messages to be deleted.
 
-            revoke (`bool`, optional):
+            revoke (:obj:`bool`, optional):
                 Whether the message should be deleted for everyone or not.
                 By default it has the opposite behaviour of official clients,
                 and it will delete the message for everyone.
                 This has no effect on channels or megagroups.
 
         Returns:
-            A list of :tl:`AffectedMessages`, each item being the result
-            for the delete calls of the messages in chunks of 100 each.
+            The :tl:`AffectedMessages`.
         """
         if not utils.is_list_like(message_ids):
             message_ids = (message_ids,)
 
-        message_ids = (
+        message_ids = [
             m.id if isinstance(m, (Message, MessageService, MessageEmpty))
             else int(m) for m in message_ids
-        )
+        ]
 
-        entity = self.get_input_entity(entity) if entity else None
+        if entity is None:
+            return self(messages.DeleteMessagesRequest(message_ids, revoke=revoke))
+
+        entity = self.get_input_entity(entity)
+
         if isinstance(entity, InputPeerChannel):
-            return self([channels.DeleteMessagesRequest(entity, list(c))
-                         for c in utils.chunks(message_ids)])
+            return self(channels.DeleteMessagesRequest(entity, message_ids))
         else:
-            return self([messages.DeleteMessagesRequest(list(c), revoke)
-                         for c in utils.chunks(message_ids)])
+            return self(messages.DeleteMessagesRequest(message_ids, revoke=revoke))
 
-    def iter_messages(self, entity, limit=None, offset_date=None,
+    def iter_messages(self, entity, limit=20, offset_date=None,
                       offset_id=0, max_id=0, min_id=0, add_offset=0,
-                      search=None, filter=None, from_user=None,
-                      batch_size=100, wait_time=None, ids=None,
-                      _total=None):
+                      batch_size=100, wait_time=None, _total=None):
         """
         Iterator over the message history for the specified entity.
 
-        If either `search`, `filter` or `from_user` are provided,
-        :tl:`messages.Search` will be used instead of :tl:`messages.getHistory`.
-
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 The entity from whom to retrieve the message history.
 
-            limit (`int` | `None`, optional):
+            limit (:obj:`int` | :obj:`None`, optional):
                 Number of messages to be retrieved. Due to limitations with
                 the API retrieving more than 3000 messages will take longer
                 than half a minute (or even more based on previous calls).
                 The limit may also be ``None``, which would eventually return
                 the whole history.
 
-            offset_date (`datetime`):
+            offset_date (:obj:`datetime`):
                 Offset date (messages *previous* to this date will be
                 retrieved). Exclusive.
 
-            offset_id (`int`):
+            offset_id (:obj:`int`):
                 Offset message ID (only messages *previous* to the given
                 ID will be retrieved). Exclusive.
 
-            max_id (`int`):
+            max_id (:obj:`int`):
                 All the messages with a higher (newer) ID or equal to this will
-                be excluded.
+                be excluded
 
-            min_id (`int`):
+            min_id (:obj:`int`):
                 All the messages with a lower (older) ID or equal to this will
                 be excluded.
 
-            add_offset (`int`):
+            add_offset (:obj:`int`):
                 Additional message offset (all of the specified offsets +
                 this offset = older messages).
 
-            search (`str`):
-                The string to be used as a search query.
-
-            filter (:tl:`MessagesFilter` | `type`):
-                The filter to use when returning messages. For instance,
-                :tl:`InputMessagesFilterPhotos` would yield only messages
-                containing photos.
-
-            from_user (`entity`):
-                Only messages from this user will be returned.
-
-            batch_size (`int`):
+            batch_size (:obj:`int`):
                 Messages will be returned in chunks of this size (100 is
                 the maximum). While it makes no sense to modify this value,
                 you are still free to do so.
 
-            wait_time (`int`):
+            wait_time (:obj:`int`):
                 Wait time between different :tl:`GetHistoryRequest`. Use this
                 parameter to avoid hitting the ``FloodWaitError`` as needed.
                 If left to ``None``, it will default to 1 second only if
                 the limit is higher than 3000.
 
-            ids (`int`, `list`):
-                A single integer ID (or several IDs) for the message that
-                should be returned. This parameter takes precedence over
-                the rest (which will be ignored if this is set). This can
-                for instance be used to get the message with ID 123 from
-                a channel. Note that if the message doesn't exist, ``None``
-                will appear in its place, so that zipping the list of IDs
-                with the messages can match one-to-one.
-
-            _total (`list`, optional):
+            _total (:obj:`list`, optional):
                 A single-item list to pass the total parameter by reference.
 
         Yields:
-            Instances of `telethon.tl.custom.message.Message`.
+            Instances of :tl:`Message` with extra attributes:
+
+                * ``.sender`` = entity of the sender.
+                * ``.fwd_from.sender`` = if fwd_from, who sent it originally.
+                * ``.fwd_from.channel`` = if fwd_from, original channel.
+                * ``.to`` = entity to which the message was sent.
 
         Notes:
             Telegram's flood wait limit for :tl:`GetHistoryRequest` seems to
@@ -1197,79 +1002,38 @@ class TelegramClient(TelegramBareClient):
             an higher limit, so you're free to set the ``batch_size`` that
             you think may be good.
         """
-        # It's possible to get messages by ID without their entity, so only
-        # fetch the input version if we're not using IDs or if it was given.
-        if not ids or entity:
-            entity = self.get_input_entity(entity)
-
-        if ids:
-            if not utils.is_list_like(ids):
-                ids = (ids,)
-            yield from self._iter_ids(entity, ids, total=_total)
-            return
-
-        # Telegram doesn't like min_id/max_id. If these IDs are low enough
-        # (starting from last_id - 100), the request will return nothing.
-        #
-        # We can emulate their behaviour locally by setting offset = max_id
-        # and simply stopping once we hit a message with ID <= min_id.
-        offset_id = max(offset_id, max_id)
-        if offset_id and min_id:
-            if offset_id - min_id <= 1:
-                return
-
+        entity = self.get_input_entity(entity)
         limit = float('inf') if limit is None else int(limit)
-        if search is not None or filter or from_user:
-            if filter is None:
-                filter = InputMessagesFilterEmpty()
-            request = SearchRequest(
-                peer=entity,
-                q=search or '',
-                filter=filter() if isinstance(filter, type) else filter,
-                min_date=None,
-                max_date=offset_date,
-                offset_id=offset_id,
-                add_offset=add_offset,
-                limit=1,
-                max_id=0,
-                min_id=0,
-                hash=0,
-                from_id=self.get_input_entity(from_user) if from_user else None
-            )
-        else:
-            request = GetHistoryRequest(
-                peer=entity,
-                limit=1,
-                offset_date=offset_date,
-                offset_id=offset_id,
-                min_id=0,
-                max_id=0,
-                add_offset=add_offset,
-                hash=0
-            )
-
         if limit == 0:
             if not _total:
                 return
             # No messages, but we still need to know the total message count
-            result = self(request)
-            if isinstance(result, MessagesNotModified):
-                _total[0] = result.count
-            else:
-                _total[0] = getattr(result, 'count', len(result.messages))
+            result = self(GetHistoryRequest(
+                peer=entity, limit=1,
+                offset_date=None, offset_id=0, max_id=0, min_id=0,
+                add_offset=0, hash=0
+            ))
+            _total[0] = getattr(result, 'count', len(result.messages))
             return
 
         if wait_time is None:
             wait_time = 1 if limit > 3000 else 0
 
         have = 0
-        last_id = float('inf')
         batch_size = min(max(batch_size, 1), 100)
         while have < limit:
-            start = time.time()
             # Telegram has a hard limit of 100
-            request.limit = min(limit - have, batch_size)
-            r = self(request)
+            real_limit = min(limit - have, batch_size)
+            r = self(GetHistoryRequest(
+                peer=entity,
+                limit=real_limit,
+                offset_date=offset_date,
+                offset_id=offset_id,
+                max_id=max_id,
+                min_id=min_id,
+                add_offset=add_offset,
+                hash=0
+            ))
             if _total:
                 _total[0] = getattr(r, 'count', len(r.messages))
 
@@ -1277,93 +1041,52 @@ class TelegramClient(TelegramBareClient):
                         for x in itertools.chain(r.users, r.chats)}
 
             for message in r.messages:
-                if message.id <= min_id:
-                    return
-
-                if isinstance(message, MessageEmpty) or message.id >= last_id:
+                if isinstance(message, MessageEmpty):
                     continue
 
-                # There has been reports that on bad connections this method
-                # was returning duplicated IDs sometimes. Using ``last_id``
-                # is an attempt to avoid these duplicates, since the message
-                # IDs are returned in descending order.
-                last_id = message.id
-
-                yield custom.Message(self, message, entities, entity)
+                # Add a few extra attributes to the Message to be friendlier.
+                # To make messages more friendly, always add message
+                # to service messages, and action to normal messages.
+                message.message = getattr(message, 'message', None)
+                message.action = getattr(message, 'action', None)
+                message.to = entities[utils.get_peer_id(message.to_id)]
+                message.sender = (
+                    None if not message.from_id else
+                    entities[utils.get_peer_id(message.from_id)]
+                )
+                if getattr(message, 'fwd_from', None):
+                    message.fwd_from.sender = (
+                        None if not message.fwd_from.from_id else
+                        entities[utils.get_peer_id(message.fwd_from.from_id)]
+                    )
+                    message.fwd_from.channel = (
+                        None if not message.fwd_from.channel_id else
+                        entities[utils.get_peer_id(
+                            PeerChannel(message.fwd_from.channel_id)
+                        )]
+                    )
+                yield message
                 have += 1
 
-            if len(r.messages) < request.limit:
+            if len(r.messages) < real_limit:
                 break
 
-            request.offset_id = r.messages[-1].id
-            if isinstance(request, GetHistoryRequest):
-                request.offset_date = r.messages[-1].date
-            else:
-                request.max_date = r.messages[-1].date
-
-            time.sleep(max(wait_time - (time.time() - start), 0))
-
-    def _iter_ids(self, entity, ids, total):
-        """
-        Special case for `iter_messages` when it should only fetch some IDs.
-        """
-        if total:
-            total[0] = len(ids)
-
-        if isinstance(entity, InputPeerChannel):
-            r = self(channels.GetMessagesRequest(entity, ids))
-        else:
-            r = self(messages.GetMessagesRequest(ids))
-
-        if isinstance(r, MessagesNotModified):
-            for _ in ids:
-                yield None
-
-        entities = {utils.get_peer_id(x): x
-                    for x in itertools.chain(r.users, r.chats)}
-
-        # Telegram seems to return the messages in the order in which
-        # we asked them for, so we don't need to check it ourselves.
-        for message in r.messages:
-            if isinstance(message, MessageEmpty):
-                yield None
-            else:
-                yield custom.Message(self, message, entities, entity)
+            offset_id = r.messages[-1].id
+            offset_date = r.messages[-1].date
+            time.sleep(wait_time)
 
     def get_messages(self, *args, **kwargs):
         """
         Same as :meth:`iter_messages`, but returns a list instead
         with an additional ``.total`` attribute on the list.
-
-        If the `limit` is not set, it will be 1 by default unless both
-        `min_id` **and** `max_id` are set (as *named* arguments), in
-        which case the entire range will be returned.
-
-        This is so because any integer limit would be rather arbitrary and
-        it's common to only want to fetch one message, but if a range is
-        specified it makes sense that it should return the entirety of it.
-
-        If `ids` is present in the *named* arguments and is not a list,
-        a single :tl:`Message` will be returned for convenience instead
-        of a list.
         """
         total = [0]
         kwargs['_total'] = total
-        if len(args) == 1 and 'limit' not in kwargs:
-            if 'min_id' in kwargs and 'max_id' in kwargs:
-                kwargs['limit'] = None
-            else:
-                kwargs['limit'] = 1
-
         msgs = UserList(self.iter_messages(*args, **kwargs))
         msgs.total = total[0]
-        if 'ids' in kwargs and not utils.is_list_like(kwargs['ids']):
-            return msgs[0]
-
         return msgs
 
     def get_message_history(self, *args, **kwargs):
-        """Deprecated, see :meth:`get_messages`."""
         warnings.warn(
             'get_message_history is deprecated, use get_messages instead'
         )
@@ -1375,21 +1098,18 @@ class TelegramClient(TelegramBareClient):
         Sends a "read acknowledge" (i.e., notifying the given peer that we've
         read their messages, also known as the "double check").
 
-        This effectively marks a message as read (or more than one) in the
-        given conversation.
-
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 The chat where these messages are located.
 
-            message (`list` | :tl:`Message`):
+            message (:obj:`list` | :tl:`Message`):
                 Either a list of messages or a single message.
 
-            max_id (`int`):
+            max_id (:obj:`int`):
                 Overrides messages, until which message should the
                 acknowledge should be sent.
 
-            clear_mentions (`bool`):
+            clear_mentions (:obj:`bool`):
                 Whether the mention badge should be cleared (so that
                 there are no more mentions) or not for the given entity.
 
@@ -1429,9 +1149,6 @@ class TelegramClient(TelegramBareClient):
         if isinstance(message, int):
             return message
 
-        if isinstance(message, custom.Message):
-            return message.original_message.id
-
         try:
             if message.SUBCLASS_OF_ID == 0x790009e3:
                 # hex(crc32(b'Message')) = 0x790009e3
@@ -1447,13 +1164,13 @@ class TelegramClient(TelegramBareClient):
         Iterator over the participants belonging to the specified chat.
 
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 The entity from which to retrieve the participants list.
 
-            limit (`int`):
+            limit (:obj:`int`):
                 Limits amount of participants fetched.
 
-            search (`str`, optional):
+            search (:obj:`str`, optional):
                 Look for participants with this string in name/username.
 
             filter (:tl:`ChannelParticipantsFilter`, optional):
@@ -1461,7 +1178,7 @@ class TelegramClient(TelegramBareClient):
                 Note that you might not have permissions for some filter.
                 This has no effect for normal chats or users.
 
-            aggressive (`bool`, optional):
+            aggressive (:obj:`bool`, optional):
                 Aggressively looks for all participants in the chat in
                 order to get more than 10,000 members (a hard limit
                 imposed by Telegram). Note that this might take a long
@@ -1471,7 +1188,7 @@ class TelegramClient(TelegramBareClient):
                 This has no effect for groups or channels with less than
                 10,000 members, or if a ``filter`` is given.
 
-            _total (`list`, optional):
+            _total (:obj:`list`, optional):
                 A single-item list to pass the total parameter by reference.
 
         Yields:
@@ -1481,12 +1198,7 @@ class TelegramClient(TelegramBareClient):
             or :tl:`ChatParticipants` for normal chats.
         """
         if isinstance(filter, type):
-            if filter in (ChannelParticipantsBanned, ChannelParticipantsKicked,
-                          ChannelParticipantsSearch):
-                # These require a `q` parameter (support types for convenience)
-                filter = filter('')
-            else:
-                filter = filter()
+            filter = filter()
 
         entity = self.get_input_entity(entity)
         if search and (filter or not isinstance(entity, InputPeerChannel)):
@@ -1502,14 +1214,11 @@ class TelegramClient(TelegramBareClient):
 
         limit = float('inf') if limit is None else int(limit)
         if isinstance(entity, InputPeerChannel):
-            if _total or (aggressive and not filter):
-                total = self(GetFullChannelRequest(
-                    entity
-                )).full_chat.participants_count
-                if _total:
-                    _total[0] = total
-            else:
-                total = 0
+            total = self(GetFullChannelRequest(
+                entity
+            )).full_chat.participants_count
+            if _total:
+                _total[0] = total
 
             if limit == 0:
                 return
@@ -1543,7 +1252,10 @@ class TelegramClient(TelegramBareClient):
                 if requests[0].offset > limit:
                     break
 
-                results = self(requests)
+                if len(requests) == 1:
+                    results = (self(requests[0]),)
+                else:
+                    results = self(*requests)
                 for i in reversed(range(len(requests))):
                     participants = results[i]
                     if not participants.users:
@@ -1566,11 +1278,6 @@ class TelegramClient(TelegramBareClient):
         elif isinstance(entity, InputPeerChat):
             # TODO We *could* apply the `filter` here ourselves
             full = self(GetFullChatRequest(entity.chat_id))
-            if not isinstance(full.full_chat.participants, ChatParticipants):
-                # ChatParticipantsForbidden won't have ``.participants``
-                _total[0] = 0
-                return
-
             if _total:
                 _total[0] = len(full.full_chat.participants.participants)
 
@@ -1611,20 +1318,132 @@ class TelegramClient(TelegramBareClient):
 
     # region Uploading files
 
-    def _file_to_media(self, file, force_document=False,
-                       progress_callback=None, attributes=None, thumb=None,
-                       allow_cache=True, voice_note=False, video_note=False):
-        if not file:
-            return None, None
+    def send_file(self, entity, file, caption='',
+                  force_document=False, progress_callback=None,
+                  reply_to=None,
+                  attributes=None,
+                  thumb=None,
+                  allow_cache=True,
+                  parse_mode='md',
+                  **kwargs):
+        """
+        Sends a file to the specified entity.
+
+        Args:
+            entity (:obj:`entity`):
+                Who will receive the file.
+
+            file (:obj:`str` | :obj:`bytes` | :obj:`file` | :obj:`media`):
+                The path of the file, byte array, or stream that will be sent.
+                Note that if a byte array or a stream is given, a filename
+                or its type won't be inferred, and it will be sent as an
+                "unnamed application/octet-stream".
+
+                Subsequent calls with the very same file will result in
+                immediate uploads, unless ``.clear_file_cache()`` is called.
+
+                Furthermore the file may be any media (a message, document,
+                photo or similar) so that it can be resent without the need
+                to download and re-upload it again.
+
+                If a list or similar is provided, the files in it will be
+                sent as an album in the order in which they appear, sliced
+                in chunks of 10 if more than 10 are given.
+
+            caption (:obj:`str`, optional):
+                Optional caption for the sent media message.
+
+            force_document (:obj:`bool`, optional):
+                If left to ``False`` and the file is a path that ends with
+                the extension of an image file or a video file, it will be
+                sent as such. Otherwise always as a document.
+
+            progress_callback (:obj:`callable`, optional):
+                A callback function accepting two parameters:
+                ``(sent bytes, total)``.
+
+            reply_to (:obj:`int` | :tl:`Message`):
+                Same as reply_to from .send_message().
+
+            attributes (:obj:`list`, optional):
+                Optional attributes that override the inferred ones, like
+                :tl:`DocumentAttributeFilename` and so on.
+
+            thumb (:obj:`str` | :obj:`bytes` | :obj:`file`, optional):
+                Optional thumbnail (for videos).
+
+            allow_cache (:obj:`bool`, optional):
+                Whether to allow using the cached version stored in the
+                database or not. Defaults to ``True`` to avoid re-uploads.
+                Must be ``False`` if you wish to use different attributes
+                or thumb than those that were used when the file was cached.
+
+            parse_mode (:obj:`str`, optional):
+                The parse mode for the caption message.
+
+        Kwargs:
+           If "is_voice_note" in kwargs, despite its value, and the file is
+           sent as a document, it will be sent as a voice note.
+
+        Notes:
+            If the ``hachoir3`` package (``hachoir`` module) is installed,
+            it will be used to determine metadata from audio and video files.
+
+        Returns:
+            The :tl:`Message` (or messages) containing the sent file.
+        """
+        # First check if the user passed an iterable, in which case
+        # we may want to send as an album if all are photo files.
+        if utils.is_list_like(file):
+            # TODO Fix progress_callback
+            images = []
+            if force_document:
+                documents = file
+            else:
+                documents = []
+                for x in file:
+                    if utils.is_image(x):
+                        images.append(x)
+                    else:
+                        documents.append(x)
+
+            result = []
+            while images:
+                result += self._send_album(
+                    entity, images[:10], caption=caption,
+                    progress_callback=progress_callback, reply_to=reply_to,
+                    parse_mode=parse_mode
+                )
+                images = images[10:]
+
+            result.extend(
+                self.send_file(
+                    entity, x, allow_cache=allow_cache,
+                    caption=caption, force_document=force_document,
+                    progress_callback=progress_callback, reply_to=reply_to,
+                    attributes=attributes, thumb=thumb, **kwargs
+                ) for x in documents
+            )
+            return result
+
+        entity = self.get_input_entity(entity)
+        reply_to = self._get_message_id(reply_to)
+        caption, msg_entities = self._parse_message_text(caption, parse_mode)
 
         if not isinstance(file, (str, bytes, io.IOBase)):
             # The user may pass a Message containing media (or the media,
             # or anything similar) that should be treated as a file. Try
             # getting the input media for whatever they passed and send it.
             try:
-                return None, utils.get_input_media(file)
+                media = utils.get_input_media(file)
             except TypeError:
-                return None, None  # Can't turn whatever was given into media
+                pass  # Can't turn whatever was given into media
+            else:
+                request = SendMediaRequest(entity, media,
+                                           reply_to_msg_id=reply_to,
+                                           message=caption,
+                                           entities=msg_entities)
+                return self._get_response_message(request, self(request))
 
         as_image = utils.is_image(file) and not force_document
         use_cache = InputPhoto if as_image else InputDocument
@@ -1656,7 +1475,6 @@ class TelegramClient(TelegramBareClient):
                         hachoir.parser.createParser(file)
                     )
                     attr_dict[DocumentAttributeAudio] = DocumentAttributeAudio(
-                        voice=voice_note,
                         title=m.get('title') if m.has('title') else None,
                         performer=m.get('author') if m.has('author') else None,
                         duration=int(m.get('duration').seconds
@@ -1669,16 +1487,13 @@ class TelegramClient(TelegramBareClient):
                             hachoir.parser.createParser(file)
                         )
                         doc = DocumentAttributeVideo(
-                            round_message=video_note,
                             w=m.get('width') if m.has('width') else 0,
                             h=m.get('height') if m.has('height') else 0,
                             duration=int(m.get('duration').seconds
                                          if m.has('duration') else 0)
                         )
                     else:
-                        doc = DocumentAttributeVideo(
-                            0, 1, 1, round_message=video_note)
-
+                        doc = DocumentAttributeVideo(0, 0, 0)
                     attr_dict[DocumentAttributeVideo] = doc
             else:
                 attr_dict = {
@@ -1687,7 +1502,7 @@ class TelegramClient(TelegramBareClient):
                             getattr(file, 'name', None) or 'unnamed'))
                 }
 
-            if voice_note:
+            if 'is_voice_note' in kwargs:
                 if DocumentAttributeAudio in attr_dict:
                     attr_dict[DocumentAttributeAudio].voice = True
                 else:
@@ -1717,167 +1532,32 @@ class TelegramClient(TelegramBareClient):
                 attributes=list(attr_dict.values()),
                 **input_kw
             )
-        return file_handle, media
 
-    def _cache_media(self, msg, file, file_handle, force_document=False):
-        if file and msg and isinstance(file_handle, InputSizedFile):
+        # Once the media type is properly specified and the file uploaded,
+        # send the media message to the desired entity.
+        request = SendMediaRequest(entity, media, reply_to_msg_id=reply_to,
+                                   message=caption, entities=msg_entities)
+        msg = self._get_response_message(request, self(request))
+        if msg and isinstance(file_handle, InputSizedFile):
             # There was a response message and we didn't use cached
             # version, so cache whatever we just sent to the database.
             md5, size = file_handle.md5, file_handle.size
-            if utils.is_image(file) and not force_document:
+            if as_image:
                 to_cache = utils.get_input_photo(msg.media.photo)
             else:
                 to_cache = utils.get_input_document(msg.media.document)
             self.session.cache_file(md5, size, to_cache)
 
-    def send_file(self, entity, file, caption='',
-                  force_document=False, progress_callback=None,
-                  reply_to=None,
-                  attributes=None,
-                  thumb=None,
-                  allow_cache=True,
-                  parse_mode=Default,
-                  voice_note=False,
-                  video_note=False,
-                  **kwargs):
-        """
-        Sends a file to the specified entity.
-
-        Args:
-            entity (`entity`):
-                Who will receive the file.
-
-            file (`str` | `bytes` | `file` | `media`):
-                The path of the file, byte array, or stream that will be sent.
-                Note that if a byte array or a stream is given, a filename
-                or its type won't be inferred, and it will be sent as an
-                "unnamed application/octet-stream".
-
-                Furthermore the file may be any media (a message, document,
-                photo or similar) so that it can be resent without the need
-                to download and re-upload it again.
-
-                If a list or similar is provided, the files in it will be
-                sent as an album in the order in which they appear, sliced
-                in chunks of 10 if more than 10 are given.
-
-            caption (`str`, optional):
-                Optional caption for the sent media message.
-
-            force_document (`bool`, optional):
-                If left to ``False`` and the file is a path that ends with
-                the extension of an image file or a video file, it will be
-                sent as such. Otherwise always as a document.
-
-            progress_callback (`callable`, optional):
-                A callback function accepting two parameters:
-                ``(sent bytes, total)``.
-
-            reply_to (`int` | :tl:`Message`):
-                Same as `reply_to` from `send_message`.
-
-            attributes (`list`, optional):
-                Optional attributes that override the inferred ones, like
-                :tl:`DocumentAttributeFilename` and so on.
-
-            thumb (`str` | `bytes` | `file`, optional):
-                Optional thumbnail (for videos).
-
-            allow_cache (`bool`, optional):
-                Whether to allow using the cached version stored in the
-                database or not. Defaults to ``True`` to avoid re-uploads.
-                Must be ``False`` if you wish to use different attributes
-                or thumb than those that were used when the file was cached.
-
-            parse_mode (`object`, optional):
-                See the `TelegramClient.parse_mode` property for allowed
-                values. Markdown parsing will be used by default.
-
-            voice_note (`bool`, optional):
-                If ``True`` the audio will be sent as a voice note.
-
-                Set `allow_cache` to ``False`` if you sent the same file
-                without this setting before for it to work.
-
-            video_note (`bool`, optional):
-                If ``True`` the video will be sent as a video note,
-                also known as a round video message.
-
-                Set `allow_cache` to ``False`` if you sent the same file
-                without this setting before for it to work.
-
-        Notes:
-            If the ``hachoir3`` package (``hachoir`` module) is installed,
-            it will be used to determine metadata from audio and video files.
-
-        Returns:
-            The `telethon.tl.custom.message.Message` (or messages) containing
-            the sent file, or messages if a list of them was passed.
-        """
-        # First check if the user passed an iterable, in which case
-        # we may want to send as an album if all are photo files.
-        if utils.is_list_like(file):
-            # TODO Fix progress_callback
-            images = []
-            if force_document:
-                documents = file
-            else:
-                documents = []
-                for x in file:
-                    if utils.is_image(x):
-                        images.append(x)
-                    else:
-                        documents.append(x)
-
-            result = []
-            while images:
-                result += self._send_album(
-                    entity, images[:10], caption=caption,
-                    progress_callback=progress_callback, reply_to=reply_to,
-                    parse_mode=parse_mode
-                )
-                images = images[10:]
-
-            result.extend(
-                self.send_file(
-                    entity, x, allow_cache=allow_cache,
-                    caption=caption, force_document=force_document,
-                    progress_callback=progress_callback, reply_to=reply_to,
-                    attributes=attributes, thumb=thumb, voice_note=voice_note,
-                    video_note=video_note, **kwargs
-                ) for x in documents
-            )
-            return result
-
-        entity = self.get_input_entity(entity)
-        reply_to = self._get_message_id(reply_to)
-
-        # Not document since it's subject to change.
-        # Needed when a Message is passed to send_message and it has media.
-        if 'entities' in kwargs:
-            msg_entities = kwargs['entities']
-        else:
-            caption, msg_entities =\
-                self._parse_message_text(caption, parse_mode)
-
-        file_handle, media = self._file_to_media(file, allow_cache=allow_cache)
-        request = SendMediaRequest(entity, media, reply_to_msg_id=reply_to,
-                                   message=caption, entities=msg_entities)
-        msg = self._get_response_message(request, self(request), entity)
-        self._cache_media(msg, file, file_handle, force_document=force_document)
-
         return msg
 
     def send_voice_note(self, *args, **kwargs):
-        """Deprecated, see :meth:`send_file`."""
-        warnings.warn('send_voice_note is deprecated, use '
-                      'send_file(..., voice_note=True) instead')
+        """Wrapper method around :meth:`send_file` with is_voice_note=True."""
         kwargs['is_voice_note'] = True
         return self.send_file(*args, **kwargs)
 
     def _send_album(self, entity, files, caption='',
                     progress_callback=None, reply_to=None,
-                    parse_mode=Default):
+                    parse_mode='md'):
         """Specialized version of .send_file for albums"""
         # We don't care if the user wants to avoid cache, we will use it
         # anyway. Why? The cached version will be exactly the same thing
@@ -1921,7 +1601,7 @@ class TelegramClient(TelegramBareClient):
             entity, reply_to_msg_id=reply_to, multi_media=media
         ))
         return [
-            self._get_response_message(update.id, result, entity)
+            self._get_response_message(update.id, result)
             for update in result.updates
             if isinstance(update, UpdateMessageID)
         ]
@@ -1934,44 +1614,46 @@ class TelegramClient(TelegramBareClient):
                     progress_callback=None):
         """
         Uploads the specified file and returns a handle (an instance of
-        :tl:`InputFile` or :tl:`InputFileBig`, as required) which can be
-        later used before it expires (they are usable during less than a day).
+        InputFile or InputFileBig, as required) which can be later used
+        before it expires (they are usable during less than a day).
 
         Uploading a file will simply return a "handle" to the file stored
         remotely in the Telegram servers, which can be later used on. This
         will **not** upload the file to your own chat or any chat at all.
 
         Args:
-            file (`str` | `bytes` | `file`):
+            file (:obj:`str` | :obj:`bytes` | :obj:`file`):
                 The path of the file, byte array, or stream that will be sent.
                 Note that if a byte array or a stream is given, a filename
                 or its type won't be inferred, and it will be sent as an
                 "unnamed application/octet-stream".
 
-            part_size_kb (`int`, optional):
+                Subsequent calls with the very same file will result in
+                immediate uploads, unless ``.clear_file_cache()`` is called.
+
+            part_size_kb (:obj:`int`, optional):
                 Chunk size when uploading files. The larger, the less
                 requests will be made (up to 512KB maximum).
 
-            file_name (`str`, optional):
+            file_name (:obj:`str`, optional):
                 The file name which will be used on the resulting InputFile.
                 If not specified, the name will be taken from the ``file``
                 and if this is not a ``str``, it will be ``"unnamed"``.
 
-            use_cache (`type`, optional):
-                The type of cache to use (currently either :tl:`InputDocument`
-                or :tl:`InputPhoto`). If present and the file is small enough
+            use_cache (:obj:`type`, optional):
+                The type of cache to use (currently either ``InputDocument``
+                or ``InputPhoto``). If present and the file is small enough
                 to need the MD5, it will be checked against the database,
                 and if a match is found, the upload won't be made. Instead,
                 an instance of type ``use_cache`` will be returned.
 
-            progress_callback (`callable`, optional):
+            progress_callback (:obj:`callable`, optional):
                 A callback function accepting two parameters:
                 ``(sent bytes, total)``.
 
         Returns:
             :tl:`InputFileBig` if the file size is larger than 10MB,
-            `telethon.tl.custom.input_sized_file.InputSizedFile`
-            (subclass of :tl:`InputFile`) otherwise.
+            ``InputSizedFile`` (subclass of :tl:`InputFile`) otherwise.
         """
         if isinstance(file, (InputFile, InputFileBig)):
             return file  # Already uploaded
@@ -2068,62 +1750,73 @@ class TelegramClient(TelegramBareClient):
         Downloads the profile photo of the given entity (user/chat/channel).
 
         Args:
-            entity (`entity`):
+            entity (:obj:`entity`):
                 From who the photo will be downloaded.
 
-            file (`str` | `file`, optional):
+            file (:obj:`str` | :obj:`file`, optional):
                 The output file path, directory, or stream-like object.
                 If the path exists and is a file, it will be overwritten.
 
-            download_big (`bool`, optional):
+            download_big (:obj:`bool`, optional):
                 Whether to use the big version of the available photos.
 
         Returns:
             ``None`` if no photo was provided, or if it was Empty. On success
             the file path is returned since it may differ from the one given.
         """
-        # hex(crc32(x.encode('ascii'))) for x in
-        # ('User', 'Chat', 'UserFull', 'ChatFull')
-        ENTITIES = (0x2da17977, 0xc5af5d94, 0x1f4661b9, 0xd49a2697)
-        # ('InputPeer', 'InputUser', 'InputChannel')
-        INPUTS = (0xc91c90b6, 0xe669bf46, 0x40f202fd)
-        if not isinstance(entity, TLObject) or entity.SUBCLASS_OF_ID in INPUTS:
-            entity = self.get_entity(entity)
-
+        photo = entity
         possible_names = []
-        if entity.SUBCLASS_OF_ID not in ENTITIES:
-            photo = entity
-        else:
+        try:
+            is_entity = entity.SUBCLASS_OF_ID in (
+                0x2da17977, 0xc5af5d94, 0x1f4661b9, 0xd49a2697
+            )
+        except AttributeError:
+            return None  # Not even a TLObject as attribute access failed
+
+        if is_entity:
+            # Maybe it is an user or a chat? Or their full versions?
+            #
+            # The hexadecimal numbers above are simply:
+            # hex(crc32(x.encode('ascii'))) for x in
+            # ('User', 'Chat', 'UserFull', 'ChatFull')
+            entity = self.get_entity(entity)
             if not hasattr(entity, 'photo'):
                 # Special case: may be a ChatFull with photo:Photo
                 # This is different from a normal UserProfilePhoto and Chat
-                if not hasattr(entity, 'chat_photo'):
+                if hasattr(entity, 'chat_photo'):
+                    return self._download_photo(
+                        entity.chat_photo, file,
+                        date=None, progress_callback=None
+                    )
+                else:
+                    # Give up
                     return None
-
-                return self._download_photo(entity.chat_photo, file,
-                                            date=None, progress_callback=None)
 
             for attr in ('username', 'first_name', 'title'):
                 possible_names.append(getattr(entity, attr, None))
 
             photo = entity.photo
 
-        if isinstance(photo, (UserProfilePhoto, ChatPhoto)):
-            loc = photo.photo_big if download_big else photo.photo_small
-        else:
-            try:
-                loc = utils.get_input_location(photo)
-            except TypeError:
-                return None
+        if not isinstance(photo, UserProfilePhoto) and \
+                not isinstance(photo, ChatPhoto):
+            return None
 
+        photo_location = photo.photo_big if download_big else photo.photo_small
         file = self._get_proper_filename(
             file, 'profile_photo', '.jpg',
             possible_names=possible_names
         )
 
+        # Download the media with the largest size input file location
         try:
-            self.download_file(loc, file)
-            return file
+            self.download_file(
+                InputFileLocation(
+                    volume_id=photo_location.volume_id,
+                    local_id=photo_location.local_id,
+                    secret=photo_location.secret
+                ),
+                file
+            )
         except LocationInvalidError:
             # See issue #500, Android app fails as of v4.6.0 (1155).
             # The fix seems to be using the full channel chat photo.
@@ -2137,23 +1830,20 @@ class TelegramClient(TelegramBareClient):
             else:
                 # Until there's a report for chats, no need to.
                 return None
+        return file
 
     def download_media(self, message, file=None, progress_callback=None):
         """
         Downloads the given media, or the media from a specified Message.
 
-        Note that if the download is too slow, you should consider installing
-        ``cryptg`` (through ``pip install cryptg``) so that decrypting the
-        received data is done in C instead of Python (much faster).
-
         message (:tl:`Message` | :tl:`Media`):
             The media or message containing the media that will be downloaded.
 
-        file (`str` | `file`, optional):
+        file (:obj:`str` | :obj:`file`, optional):
             The output file path, directory, or stream-like object.
             If the path exists and is a file, it will be overwritten.
 
-        progress_callback (`callable`, optional):
+        progress_callback (:obj:`callable`, optional):
             A callback function accepting two parameters:
             ``(received bytes, total)``.
 
@@ -2168,10 +1858,6 @@ class TelegramClient(TelegramBareClient):
         else:
             date = datetime.now()
             media = message
-
-        if isinstance(media, MessageMediaWebPage):
-            if isinstance(media.webpage, WebPage):
-                media = media.webpage.document or media.webpage.photo
 
         if isinstance(media, (MessageMediaPhoto, Photo,
                               PhotoSize, PhotoCachedSize)):
@@ -2217,8 +1903,16 @@ class TelegramClient(TelegramBareClient):
                     f.close()
             return file
 
-        self.download_file(photo.location, file, file_size=photo.size,
-                           progress_callback=progress_callback)
+        self.download_file(
+            InputFileLocation(
+                volume_id=photo.location.volume_id,
+                local_id=photo.location.local_id,
+                secret=photo.location.secret
+            ),
+            file,
+            file_size=photo.size,
+            progress_callback=progress_callback
+        )
         return file
 
     def _download_document(self, document, file, date, progress_callback):
@@ -2254,8 +1948,16 @@ class TelegramClient(TelegramBareClient):
             date=date, possible_names=possible_names
         )
 
-        self.download_file(document, file, file_size=file_size,
-                           progress_callback=progress_callback)
+        self.download_file(
+            InputDocumentFileLocation(
+                id=document.id,
+                access_hash=document.access_hash,
+                version=document.version
+            ),
+            file,
+            file_size=file_size,
+            progress_callback=progress_callback
+        )
         return file
 
     @staticmethod
@@ -2355,7 +2057,7 @@ class TelegramClient(TelegramBareClient):
 
     def download_file(self,
                       input_location,
-                      file=None,
+                      file,
                       part_size_kb=None,
                       file_size=None,
                       progress_callback=None):
@@ -2363,27 +2065,22 @@ class TelegramClient(TelegramBareClient):
         Downloads the given input location to a file.
 
         Args:
-            input_location (:tl:`FileLocation` | :tl:`InputFileLocation`):
+            input_location (:tl:`InputFileLocation`):
                 The file location from which the file will be downloaded.
-                See `telethon.utils.get_input_location` source for a complete
-                list of supported types.
 
-            file (`str` | `file`, optional):
+            file (:obj:`str` | :obj:`file`):
                 The output file path, directory, or stream-like object.
                 If the path exists and is a file, it will be overwritten.
 
-                If the file path is ``None``, then the result will be
-                saved in memory and returned as `bytes`.
-
-            part_size_kb (`int`, optional):
+            part_size_kb (:obj:`int`, optional):
                 Chunk size when downloading files. The larger, the less
                 requests will be made (up to 512KB maximum).
 
-            file_size (`int`, optional):
+            file_size (:obj:`int`, optional):
                 The file size that is about to be downloaded, if known.
                 Only used if ``progress_callback`` is specified.
 
-            progress_callback (`callable`, optional):
+            progress_callback (:obj:`callable`, optional):
                 A callback function accepting two parameters:
                 ``(downloaded bytes, total)``. Note that the
                 ``total`` is the provided ``file_size``.
@@ -2405,10 +2102,7 @@ class TelegramClient(TelegramBareClient):
             raise ValueError(
                 'The part size must be evenly divisible by 4096.')
 
-        in_memory = file is None
-        if in_memory:
-            f = io.BytesIO()
-        elif isinstance(file, str):
+        if isinstance(file, str):
             # Ensure that we'll be able to download the media
             helpers.ensure_parent_dir_exists(file)
             f = open(file, 'wb')
@@ -2418,7 +2112,6 @@ class TelegramClient(TelegramBareClient):
         # The used client will change if FileMigrateError occurs
         client = self
         cdn_decrypter = None
-        input_location = utils.get_input_location(input_location)
 
         __log__.info('Downloading file in chunks of %d bytes', part_size)
         try:
@@ -2451,11 +2144,7 @@ class TelegramClient(TelegramBareClient):
                 # So there is nothing left to download and write
                 if not result.bytes:
                     # Return some extra information, unless it's a CDN file
-                    if in_memory:
-                        f.flush()
-                        return f.getvalue()
-                    else:
-                        return getattr(result, 'type', '')
+                    return getattr(result, 'type', '')
 
                 f.write(result.bytes)
                 __log__.debug('Saved %d more bytes', len(result.bytes))
@@ -2470,7 +2159,7 @@ class TelegramClient(TelegramBareClient):
                     cdn_decrypter.client.disconnect()
                 except:
                     pass
-            if isinstance(file, str) or in_memory:
+            if isinstance(file, str):
                 f.close()
 
     # endregion
@@ -2484,7 +2173,7 @@ class TelegramClient(TelegramBareClient):
         Decorator helper method around add_event_handler().
 
         Args:
-            event (`_EventBuilder` | `type`):
+            event (:obj:`_EventBuilder` | :obj:`type`):
                 The event builder class or instance to be used,
                 for instance ``events.NewMessage``.
         """
@@ -2504,12 +2193,7 @@ class TelegramClient(TelegramBareClient):
         for builder, callback in self._event_builders:
             event = builder.build(update)
             if event:
-                if hasattr(event, '_set_client'):
-                    event._set_client(self)
-                else:
-                    event._client = self
-
-                event.original_update = update
+                event._client = self
                 try:
                     callback(event)
                 except events.StopPropagation:
@@ -2525,16 +2209,15 @@ class TelegramClient(TelegramBareClient):
         Registers the given callback to be called on the specified event.
 
         Args:
-            callback (`callable`):
+            callback (:obj:`callable`):
                 The callable function accepting one parameter to be used.
 
-            event (`_EventBuilder` | `type`, optional):
+            event (:obj:`_EventBuilder` | :obj:`type`, optional):
                 The event builder class or instance to be used,
                 for instance ``events.NewMessage``.
 
-                If left unspecified, `telethon.events.raw.Raw` (the
-                :tl:`Update` objects with no further processing) will
-                be passed instead.
+                If left unspecified, ``events.Raw`` (the ``Update`` objects
+                with no further processing) will be passed instead.
         """
         if self.updates.workers is None:
             warnings.warn(
@@ -2568,10 +2251,8 @@ class TelegramClient(TelegramBareClient):
         if event and not isinstance(event, type):
             event = type(event)
 
-        i = len(self._event_builders)
-        while i:
-            i -= 1
-            ev, cb = self._event_builders[i]
+        for i, ec in enumerate(self._event_builders):
+            ev, cb = ec
             if cb == callback and (not event or isinstance(ev, event)):
                 del self._event_builders[i]
                 found += 1
@@ -2586,7 +2267,6 @@ class TelegramClient(TelegramBareClient):
         return [(callback, event) for event, callback in self._event_builders]
 
     def add_update_handler(self, handler):
-        """Deprecated, see :meth:`add_event_handler`."""
         warnings.warn(
             'add_update_handler is deprecated, use the @client.on syntax '
             'or add_event_handler(callback, events.Raw) instead (see '
@@ -2601,45 +2281,6 @@ class TelegramClient(TelegramBareClient):
     def list_update_handlers(self):
         return [callback for callback, _ in self.list_event_handlers()]
 
-    def catch_up(self):
-        state = self.session.get_update_state(0)
-        if not state or not state.pts:
-            return
-
-        self.session.catching_up = True
-        try:
-            while True:
-                d = self(GetDifferenceRequest(state.pts, state.date, state.qts))
-                if isinstance(d, DifferenceEmpty):
-                    state.date = d.date
-                    state.seq = d.seq
-                    break
-                elif isinstance(d, (DifferenceSlice, Difference)):
-                    if isinstance(d, Difference):
-                        state = d.state
-                    elif d.intermediate_state.pts > state.pts:
-                        state = d.intermediate_state
-                    else:
-                        # TODO Figure out why other applications can rely on
-                        # using always the intermediate_state to eventually
-                        # reach a DifferenceEmpty, but that leads to an
-                        # infinite loop here (so check against old pts to stop)
-                        break
-
-                    self.updates.process(Updates(
-                        users=d.users,
-                        chats=d.chats,
-                        date=state.date,
-                        seq=state.seq,
-                        updates=d.other_updates + [UpdateNewMessage(m, 0, 0)
-                                                   for m in d.new_messages]
-                    ))
-                elif isinstance(d, DifferenceTooLong):
-                    break
-        finally:
-            self.session.set_update_state(0, state)
-            self.session.catching_up = False
-
     # endregion
 
     # region Small utilities to make users' life easier
@@ -2652,7 +2293,7 @@ class TelegramClient(TelegramBareClient):
         """
         Turns the given entity into a valid Telegram user or chat.
 
-        entity (`str` | `int` | :tl:`Peer` | :tl:`InputPeer`):
+        entity (:obj:`str` | :obj:`int` | :tl:`Peer` | :tl:`InputPeer`):
             The entity (or iterable of entities) to be transformed.
             If it's a string which can be converted to an integer or starts
             with '+' it will be resolved as if it were a phone number.
@@ -2668,11 +2309,13 @@ class TelegramClient(TelegramBareClient):
             error will be raised.
 
         Returns:
-            :tl:`User`, :tl:`Chat` or :tl:`Channel` corresponding to the
-            input entity. A list will be returned if more than one was given.
+            :tl:`User`, :tl:`Chat` or :tl:`Channel` corresponding to the input
+            entity.
         """
-        single = not utils.is_list_like(entity)
-        if single:
+        if utils.is_list_like(entity):
+            single = False
+        else:
+            single = True
             entity = (entity,)
 
         # Group input entities by string (resolve username),
@@ -2683,8 +2326,7 @@ class TelegramClient(TelegramBareClient):
             x if isinstance(x, str) else self.get_input_entity(x)
             for x in entity
         ]
-        users = [x for x in inputs
-                 if isinstance(x, (InputPeerUser, InputPeerSelf))]
+        users = [x for x in inputs if isinstance(x, InputPeerUser)]
         chats = [x.chat_id for x in inputs if isinstance(x, InputPeerChat)]
         channels = [x for x in inputs if isinstance(x, InputPeerChannel)]
         if users:
@@ -2711,12 +2353,7 @@ class TelegramClient(TelegramBareClient):
         # username changes.
         result = [
             self._get_entity_from_string(x) if isinstance(x, str)
-            else (
-                id_entity[utils.get_peer_id(x)]
-                if not isinstance(x, InputPeerSelf)
-                else next(u for u in id_entity.values()
-                          if isinstance(u, User) and u.is_self)
-            )
+            else id_entity[utils.get_peer_id(x)]
             for x in inputs
         ]
         return result[0] if single else result
@@ -2744,21 +2381,15 @@ class TelegramClient(TelegramBareClient):
                 invite = self(CheckChatInviteRequest(username))
                 if isinstance(invite, ChatInvite):
                     raise ValueError(
-                        'Cannot get entity from a channel (or group) '
-                        'that you are not part of. Join the group and retry'
+                        'Cannot get entity from a channel '
+                        '(or group) that you are not part of'
                     )
                 elif isinstance(invite, ChatInviteAlready):
                     return invite.chat
             elif username:
                 if username in ('me', 'self'):
                     return self.get_me()
-
-                try:
-                    result = self(ResolveUsernameRequest(username))
-                except UsernameNotOccupiedError as e:
-                    raise ValueError('No user has "{}" as username'
-                                     .format(username)) from e
-
+                result = self(ResolveUsernameRequest(username))
                 for entity in itertools.chain(result.users, result.chats):
                     if getattr(entity, 'username', None) or ''\
                             .lower() == username:
@@ -2769,8 +2400,8 @@ class TelegramClient(TelegramBareClient):
             except ValueError:
                 pass
 
-        raise ValueError(
-            'Cannot find any entity corresponding to "{}"'.format(string)
+        raise TypeError(
+            'Cannot turn "{}" into any entity (user or chat)'.format(string)
         )
 
     def get_input_entity(self, peer):
@@ -2779,7 +2410,7 @@ class TelegramClient(TelegramBareClient):
         use this kind of InputUser, InputChat and so on, so this is the
         most suitable call to make for those cases.
 
-        entity (`str` | `int` | :tl:`Peer` | :tl:`InputPeer`):
+        entity (:obj:`str` | :obj:`int` | :tl:`Peer` | :tl:`InputPeer`):
             The integer ID of an user or otherwise either of a
             :tl:`PeerUser`, :tl:`PeerChat` or :tl:`PeerChannel`, for
             which to get its ``Input*`` version.
@@ -2792,15 +2423,8 @@ class TelegramClient(TelegramBareClient):
             a ValueError will be raised.
 
         Returns:
-            :tl:`InputPeerUser`, :tl:`InputPeerChat` or :tl:`InputPeerChannel`
-            or :tl:`InputPeerSelf` if the parameter is ``'me'`` or ``'self'``.
-
-            If you need to get the ID of yourself, you should use
-            `get_me` with ``input_peer=True``) instead.
+            :tl:`InputPeerUser`, :tl:`InputPeerChat` or :tl:`InputPeerChannel`.
         """
-        if peer in ('me', 'self'):
-            return InputPeerSelf()
-
         try:
             # First try to get the entity from cache, otherwise figure it out
             return self.session.get_input_entity(peer)
@@ -2808,91 +2432,42 @@ class TelegramClient(TelegramBareClient):
             pass
 
         if isinstance(peer, str):
+            if peer in ('me', 'self'):
+                return InputPeerSelf()
             return utils.get_input_peer(self._get_entity_from_string(peer))
 
-        if not isinstance(peer, int) and (not isinstance(peer, TLObject)
-                                          or peer.SUBCLASS_OF_ID != 0x2d45687):
-            # Try casting the object into an input peer. Might TypeError.
-            # Don't do it if a not-found ID was given (instead ValueError).
-            # Also ignore Peer (0x2d45687 == crc32(b'Peer'))'s, lacking hash.
-            return utils.get_input_peer(peer)
+        original_peer = peer
+        if not isinstance(peer, int):
+            try:
+                if peer.SUBCLASS_OF_ID != 0x2d45687:  # crc32(b'Peer')
+                    return utils.get_input_peer(peer)
+            except (AttributeError, TypeError):
+                peer = None
 
-        raise ValueError(
-            'Could not find the input entity for "{}". Please read https://'
-            'telethon.readthedocs.io/en/latest/extra/basic/entities.html to'
-            ' find out more details.'
-            .format(peer)
-        )
-
-    def edit_2fa(self, current_password=None, new_password=None, hint='',
-                 email=None):
-        """
-        Changes the 2FA settings of the logged in user, according to the
-        passed parameters. Take note of the parameter explanations.
-
-        Has no effect if both current and new password are omitted.
-
-        current_password (`str`, optional):
-            The current password, to authorize changing to ``new_password``.
-            Must be set if changing existing 2FA settings.
-            Must **not** be set if 2FA is currently disabled.
-            Passing this by itself will remove 2FA (if correct).
-
-        new_password (`str`, optional):
-            The password to set as 2FA.
-            If 2FA was already enabled, ``current_password`` **must** be set.
-            Leaving this blank or ``None`` will remove the password.
-
-        hint (`str`, optional):
-            Hint to be displayed by Telegram when it asks for 2FA.
-            Leaving unspecified is highly discouraged.
-            Has no effect if ``new_password`` is not set.
-
-        email (`str`, optional):
-            Recovery and verification email. Raises ``EmailUnconfirmedError``
-            if value differs from current one, and has no effect if
-            ``new_password`` is not set.
-
-        Returns:
-            ``True`` if successful, ``False`` otherwise.
-        """
-        if new_password is None and current_password is None:
-            return False
-
-        pass_result = self(GetPasswordRequest())
-        if isinstance(pass_result, NoPassword) and current_password:
-            current_password = None
-
-        salt_random = os.urandom(8)
-        salt = pass_result.new_salt + salt_random
-        if not current_password:
-            current_password_hash = salt
-        else:
-            current_password = pass_result.current_salt +\
-                current_password.encode() + pass_result.current_salt
-            current_password_hash = hashlib.sha256(current_password).digest()
-
-        if new_password:  # Setting new password
-            new_password = salt + new_password.encode('utf-8') + salt
-            new_password_hash = hashlib.sha256(new_password).digest()
-            new_settings = PasswordInputSettings(
-                new_salt=salt,
-                new_password_hash=new_password_hash,
-                hint=hint
+        if not peer:
+            raise TypeError(
+                'Cannot turn "{}" into an input entity.'.format(original_peer)
             )
-            if email:  # If enabling 2FA or changing email
-                new_settings.email = email  # TG counts empty string as None
-            return self(UpdatePasswordSettingsRequest(
-                current_password_hash, new_settings=new_settings
-            ))
-        else:  # Removing existing password
-            return self(UpdatePasswordSettingsRequest(
-                current_password_hash,
-                new_settings=PasswordInputSettings(
-                    new_salt=bytes(),
-                    new_password_hash=bytes(),
-                    hint=hint
-                )
-            ))
+
+        # Add the mark to the peers if the user passed a Peer (not an int),
+        # or said ID is negative. If it's negative it's been marked already.
+        # Look in the dialogs with the hope to find it.
+        if not self._called_get_dialogs:
+            self._called_get_dialogs = True
+            mark = not isinstance(peer, int) or peer < 0
+            target_id = utils.get_peer_id(peer)
+            if mark:
+                for dialog in self.get_dialogs(100):
+                    if utils.get_peer_id(dialog.entity) == target_id:
+                        return utils.get_input_peer(dialog.entity)
+            else:
+                for dialog in self.get_dialogs(100):
+                    if dialog.entity.id == target_id:
+                        return utils.get_input_peer(dialog.entity)
+
+        raise TypeError(
+            'Could not find the input entity corresponding to "{}". '
+            'Make sure you have encountered this peer before.'.format(peer)
+        )
 
     # endregion
